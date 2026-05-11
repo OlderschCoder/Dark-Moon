@@ -1,0 +1,119 @@
+version: "3.8"
+
+# Secure / hardened docker-compose for Dark-Moon (minimal privileges, no docker.sock, resource limits, capability drops)
+# NOTES:
+# - Replace image tags with vetted, signed images.
+# - Provide secrets via your secret-store (see below) rather than embedding keys in env files.
+
+networks:
+  darkmoon_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: darkmoon_br
+    # Do NOT set internal: true if you need outbound internet to LLMs; instead control egress via host firewall / proxy.
+
+volumes:
+  darkmoon_opencode:
+  darkmoon_settings:
+  darkmoon_reports:
+  darkmoon_sessions:
+  darkmoon_workflows:
+
+secrets:
+  # Example: provide sensitive values via Docker secrets (or use an external secret provider such as Azure Key Vault).
+  # Create the secret on the host (docker secret create openrouter_api_key ./secrets/openrouter_api_key)
+  openrouter_api_key:
+    external: true
+  opencode_env:
+    external: true
+
+services:
+
+  # Darkmoon runtime/toolbox
+  darkmoon:
+    image: ascit/darkmoon:latest
+    container_name: darkmoon
+    # Do not run in host network mode
+    networks:
+      - darkmoon_net
+    # Run as non-root user if image supports it; adjust UID:GID to your hardened admin user
+    user: "1000:1000"
+    # Remove privileged capabilities; drop all and only add minimal if needed
+    cap_drop:
+      - ALL
+    # Enforce no new privileges
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits (compose may not enforce deploy limits outside swarm; set where supported)
+    mem_limit: 4g
+    cpus: 1.0
+    # Filesystem: make root read-only and provide tmpfs for writable paths
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    tmpfs_size: 1073741824
+    # Minimal required mounts (avoid mounting host Docker socket)
+    volumes:
+      - darkmoon_settings:/root/.config/opencode/:rw
+      - darkmoon_settings:/root/.local/share/opencode/:rw
+      - darkmoon_settings/agents:/root/.opencode/agents/:rw
+      - darkmoon_reports:/root/.local/share/opencode/reports/:rw
+      - darkmoon_sessions:/root/.local/share/opencode/sessions/:rw
+      - darkmoon_workflows:/opt/darkmoon/mcp/server/src/tools/workflows/:rw
+      # If you need to mount kube config, prefer a scoped copy (read-only) instead of full host path:
+      # - ./kube/scoped-kubeconfig:/root/.kube/config:ro
+    environment:
+      - DM_MODE=default
+      - LANG=C.UTF-8
+      - TERM=xterm-256color
+    # Avoid exposing unnecessary host ports. Only expose what's required.
+    ports:
+      - "9222:9222" # if headless browser remote debugging required
+    restart: unless-stopped
+
+  # OpenCode (AI brain + agents)
+  opencode:
+    image: ascit/opencode-darkmoon:latest
+    container_name: opencode
+    networks:
+      - darkmoon_net
+    user: "1000:1000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 6g
+    cpus: 2.0
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    tmpfs_size: 1073741824
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    env_file:
+      - ./.opencode.env       # prefer this file to be created from secrets at deploy time (not stored in repo)
+    # For sensitive keys prefer to consume secrets (example below)
+    secrets:
+      - openrouter_api_key
+      - opencode_env
+    volumes:
+      # Avoid mounting /var/run/docker.sock
+      # If Docker control is required, use a scoped API proxy or a dedicated sidecar with limited API surface.
+      - darkmoon_settings:/root/.config/opencode/:rw
+      - darkmoon_settings:/root/.local/share/opencode/:rw
+      - darkmoon_settings/agents:/root/.opencode/agents/:rw
+      - darkmoon_reports:/root/.local/share/opencode/reports/:rw
+      - darkmoon_sessions:/root/.local/share/opencode/sessions/:rw
+      - darkmoon_workflows:/opt/darkmoon/mcp/server/src/tools/workflows/:rw
+    environment:
+      - TERM=xterm-256color
+      - LANG=C.UTF-8
+    # If outbound traffic to LLM provider must go through a proxy, set HTTP(S)_PROXY env vars here:
+    # environment:
+    #   - HTTP_PROXY=http://10.0.0.10:3128
+    #   - HTTPS_PROXY=http://10.0.0.10:3128
+
+# End of compose
