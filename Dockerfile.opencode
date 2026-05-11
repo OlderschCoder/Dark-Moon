@@ -47,6 +47,9 @@ RUN cd packages/opencode && \
 # =========================
 FROM debian:bookworm-slim
 
+ARG DARKMOON_UID=1000
+ARG DARKMOON_GID=1000
+
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     bash \
@@ -124,9 +127,8 @@ RUN chmod +x /usr/local/bin/opencode
 ENV TERM=xterm-256color
 ENV LANG=C.UTF-8
 
-RUN mkdir -p /root/.local/share/opencode/sessions \
- && mkdir -p /root/.local/share/opencode/reports \
- && cat >> /root/.bashrc <<'EOF'
+RUN mkdir -p /etc/darkmoon \
+ && cat > /etc/darkmoon/bashrc <<'EOF'
 
 # ============================
 # Darkmoon environment
@@ -177,16 +179,36 @@ opencode() {
 EOF
 
 
-COPY conf/apply-settings.sh /root/conf/apply-settings.sh
-RUN sed -i 's/\r$//' /root/conf/apply-settings.sh \
- && chmod +x /root/conf/apply-settings.sh
+RUN mkdir -p /opt/darkmoon/conf
+COPY conf/apply-settings.sh /opt/darkmoon/conf/apply-settings.sh
+RUN sed -i 's/\r$//' /opt/darkmoon/conf/apply-settings.sh \
+ && chmod +x /opt/darkmoon/conf/apply-settings.sh
 
 COPY conf/entrypoint-opencode.sh /entrypoint-opencode.sh
 RUN sed -i 's/\r$//' /entrypoint-opencode.sh \
  && chmod +x /entrypoint-opencode.sh
 
-# 🔒 Normalisation LF (CRLF Windows safe)
-RUN sed -i 's/\r$//' /root/.bashrc
+# 🔒 Normalisation LF (CRLF Windows safe) + non-root runtime user support
+RUN groupadd --gid ${DARKMOON_GID} darkmoon \
+ && useradd --uid ${DARKMOON_UID} --gid darkmoon --create-home --home-dir /home/darkmoon --shell /bin/bash darkmoon \
+ && mkdir -p \
+      /home/darkmoon/.cache \
+      /home/darkmoon/.config/opencode \
+      /home/darkmoon/.local/share/opencode/reports \
+      /home/darkmoon/.local/share/opencode/sessions \
+      /home/darkmoon/.opencode/agents \
+      /opt/darkmoon/conf \
+      /opt/darkmoon/mcp/server/src/tools/workflows \
+ && cp /etc/darkmoon/bashrc /root/.bashrc \
+ && cp /etc/darkmoon/bashrc /home/darkmoon/.bashrc \
+ && sed -i 's/\r$//' /root/.bashrc /home/darkmoon/.bashrc /etc/darkmoon/bashrc \
+ && chown -R darkmoon:darkmoon /home/darkmoon /opt/darkmoon
+
+ENV HOME=/home/darkmoon \
+    XDG_CONFIG_HOME=/home/darkmoon/.config \
+    XDG_DATA_HOME=/home/darkmoon/.local/share \
+    XDG_CACHE_HOME=/home/darkmoon/.cache \
+    OPENCODE_HOME=/home/darkmoon
 
 ENTRYPOINT ["/entrypoint-opencode.sh"]
 CMD ["bash"]

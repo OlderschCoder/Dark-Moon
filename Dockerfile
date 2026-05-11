@@ -124,6 +124,9 @@ RUN install -d \
 # ============================================================
 FROM nvidia/cuda:13.1.0-devel-ubuntu22.04
 
+ARG DARKMOON_UID=1000
+ARG DARKMOON_GID=1000
+
 ENV DEBIAN_FRONTEND=noninteractive \
     DM_HOME=/opt/darkmoon
 
@@ -258,6 +261,25 @@ RUN command -v nuclei >/dev/null \
 RUN mkdir -p /root/nuclei-templates \
  && cp -a ${NUCLEI_TEMPLATES}/. /root/nuclei-templates/ || true \
  && nuclei -tl >/dev/null 2>&1 || true
+
+# ------------------------------------------------------------
+# Non-root runtime user support
+# ------------------------------------------------------------
+RUN groupadd --gid ${DARKMOON_GID} darkmoon \
+ && useradd --uid ${DARKMOON_UID} --gid darkmoon --create-home --home-dir /home/darkmoon --shell /bin/bash darkmoon \
+ && mkdir -p \
+      /home/darkmoon/.cache \
+      /home/darkmoon/.config \
+      /home/darkmoon/.local/share \
+      /home/darkmoon/nuclei-templates \
+      /opt/darkmoon/out \
+ && cp -a ${NUCLEI_TEMPLATES}/. /home/darkmoon/nuclei-templates/ || true \
+ && chown -R darkmoon:darkmoon /home/darkmoon /opt/darkmoon
+
+ENV HOME=/home/darkmoon \
+    XDG_CACHE_HOME=/home/darkmoon/.cache \
+    XDG_CONFIG_HOME=/home/darkmoon/.config \
+    XDG_DATA_HOME=/home/darkmoon/.local/share
 
 # ------------------------------------------------------------
 # Hardening

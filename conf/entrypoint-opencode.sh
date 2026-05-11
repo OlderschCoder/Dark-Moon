@@ -14,13 +14,17 @@ fatal() {
 #######################################
 # Paths
 #######################################
-AGENTS_DIR="/root/.opencode/agents"
-DEFAULT_AGENTS="/opt/darkmoon/default-agents"
-DEFAULT_WORKFLOWS="/opt/darkmoon/default-workflows"
-WORKFLOWS_DIR="/opt/darkmoon/mcp/server/src/tools/workflows/"
-OPENCODE_CONFIG_FILE="/root/.config/opencode/opencode.json"
-OPENCODE_AUTH_FILE="/root/.local/share/opencode/auth.json"
-APPLY_SCRIPT="/root/conf/apply-settings.sh"
+OPENCODE_HOME="${OPENCODE_HOME:-${HOME:-/root}}"
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$OPENCODE_HOME/.config}"
+XDG_DATA_HOME="${XDG_DATA_HOME:-$OPENCODE_HOME/.local/share}"
+
+AGENTS_DIR="${OPENCODE_AGENTS_DIR:-$OPENCODE_HOME/.opencode/agents}"
+DEFAULT_AGENTS="${DEFAULT_AGENTS:-/opt/darkmoon/default-agents}"
+DEFAULT_WORKFLOWS="${DEFAULT_WORKFLOWS:-/opt/darkmoon/default-workflows}"
+WORKFLOWS_DIR="${DARKMOON_WORKFLOWS_DIR:-/opt/darkmoon/mcp/server/src/tools/workflows}"
+OPENCODE_CONFIG_FILE="${OPENCODE_CONFIG_FILE:-$XDG_CONFIG_HOME/opencode/opencode.json}"
+OPENCODE_AUTH_FILE="${OPENCODE_AUTH_FILE:-$XDG_DATA_HOME/opencode/auth.json}"
+APPLY_SCRIPT="${APPLY_SCRIPT:-/opt/darkmoon/conf/apply-settings.sh}"
 
 #######################################
 # Sanity checks
@@ -42,7 +46,8 @@ mkdir -p \
 log "Applying OpenCode configuration (forced)"
 
 log "Runtime environment variables available:"
-env | grep -E 'OPENROUTER_|OPENCODE_' || true
+env | grep -E 'OPENROUTER_|OPENCODE_' \
+  | sed -E 's/^([^=]*(KEY|TOKEN|SECRET|PASSWORD)[^=]*)=.*/\1=[REDACTED]/' || true
 
 [ -x "$APPLY_SCRIPT" ] || fatal "Apply script not executable: $APPLY_SCRIPT"
 
@@ -102,14 +107,15 @@ ls -la "$AGENTS_DIR"
 # Real-time Markdown watcher (inotify)
 #######################################
 
-SESSIONS_DIR="/root/.local/share/opencode/sessions"
+SESSIONS_DIR="${OPENCODE_SESSIONS_DIR:-$XDG_DATA_HOME/opencode/sessions}"
+WATCH_DIR="${OPENCODE_MARKDOWN_WATCH_DIR:-$OPENCODE_HOME}"
 
 log "Preparing OpenCode sessions directory"
-mkdir -p "$SESSIONS_DIR"
+mkdir -p "$SESSIONS_DIR" "$WATCH_DIR"
 
-log "Starting real-time Markdown watcher (inotify on /)"
+log "Starting real-time Markdown watcher (inotify on $WATCH_DIR)"
 
-inotifywait -m / \
+inotifywait -m "$WATCH_DIR" \
   -e create -e moved_to -e close_write \
   --format '%w%f' |
 while read -r path; do
@@ -121,7 +127,7 @@ while read -r path; do
   esac
 
   case "$path" in
-    /*.md) ;;
+    "$WATCH_DIR"/*.md) ;;
     *) continue ;;
   esac
 

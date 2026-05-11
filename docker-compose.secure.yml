@@ -1,9 +1,10 @@
-version: "3.8"
-
-# Secure / hardened docker-compose for Dark-Moon (minimal privileges, no docker.sock, resource limits, capability drops)
+# Secure / hardened docker-compose for Dark-Moon.
+# The MCP server still needs Docker exec access to run tools in the darkmoon toolbox
+# container, so Docker access is isolated behind a local socket proxy instead of
+# mounting the host Docker socket into the LLM/OpenCode container.
 # NOTES:
 # - Replace image tags with vetted, signed images.
-# - Provide secrets via your secret-store (see below) rather than embedding keys in env files.
+# - Provide secrets via your secret-store or a local .opencode.env that is not committed.
 
 networks:
   darkmoon_net:
@@ -13,19 +14,15 @@ networks:
     # Do NOT set internal: true if you need outbound internet to LLMs; instead control egress via host firewall / proxy.
 
 volumes:
-  darkmoon_opencode:
-  darkmoon_settings:
+  darkmoon_home:
+  darkmoon_out:
+  opencode_home:
+  opencode_config:
+  opencode_data:
+  opencode_agents:
   darkmoon_reports:
   darkmoon_sessions:
   darkmoon_workflows:
-
-secrets:
-  # Example: provide sensitive values via Docker secrets (or use an external secret provider such as Azure Key Vault).
-  # Create the secret on the host (docker secret create openrouter_api_key ./secrets/openrouter_api_key)
-  openrouter_api_key:
-    external: true
-  opencode_env:
-    external: true
 
 services:
 
@@ -50,26 +47,52 @@ services:
     # Filesystem: make root read-only and provide tmpfs for writable paths
     read_only: true
     tmpfs:
-      - /tmp
-      - /run
-    tmpfs_size: 1073741824
+      - /tmp:size=1g,mode=1777
+      - /run:size=64m,mode=755
     # Minimal required mounts (avoid mounting host Docker socket)
     volumes:
-      - darkmoon_settings:/root/.config/opencode/:rw
-      - darkmoon_settings:/root/.local/share/opencode/:rw
-      - darkmoon_settings/agents:/root/.opencode/agents/:rw
-      - darkmoon_reports:/root/.local/share/opencode/reports/:rw
-      - darkmoon_sessions:/root/.local/share/opencode/sessions/:rw
-      - darkmoon_workflows:/opt/darkmoon/mcp/server/src/tools/workflows/:rw
+      - darkmoon_home:/home/darkmoon:rw
+      - darkmoon_out:/opt/darkmoon/out:rw
       # If you need to mount kube config, prefer a scoped copy (read-only) instead of full host path:
-      # - ./kube/scoped-kubeconfig:/root/.kube/config:ro
+      # - ./kube/scoped-kubeconfig:/home/darkmoon/.kube/config:ro
     environment:
       - DM_MODE=default
+      - HOME=/home/darkmoon
+      - XDG_CACHE_HOME=/home/darkmoon/.cache
+      - XDG_CONFIG_HOME=/home/darkmoon/.config
+      - XDG_DATA_HOME=/home/darkmoon/.local/share
       - LANG=C.UTF-8
       - TERM=xterm-256color
     # Avoid exposing unnecessary host ports. Only expose what's required.
     ports:
       - "9222:9222" # if headless browser remote debugging required
+    restart: unless-stopped
+
+  # Narrow Docker API proxy used by MCP for container exec.
+  # This is safer than giving OpenCode direct access to /var/run/docker.sock.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: darkmoon-docker-proxy
+    networks:
+      - darkmoon_net
+    read_only: true
+    tmpfs:
+      - /run:size=64m,mode=755
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 0.25
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - LOG_LEVEL=warning
+      - PING=1
+      - VERSION=1
+      - CONTAINERS=1
+      - EXEC=1
+      - POST=1
     restart: unless-stopped
 
   # OpenCode (AI brain + agents)
@@ -78,6 +101,9 @@ services:
     container_name: opencode
     networks:
       - darkmoon_net
+    depends_on:
+      - darkmoon
+      - docker-proxy
     user: "1000:1000"
     cap_drop:
       - ALL
@@ -87,28 +113,32 @@ services:
     cpus: 2.0
     read_only: true
     tmpfs:
-      - /tmp
-      - /run
-    tmpfs_size: 1073741824
+      - /tmp:size=1g,mode=1777
+      - /run:size=64m,mode=755
     stdin_open: true
     tty: true
     restart: unless-stopped
     env_file:
       - ./.opencode.env       # prefer this file to be created from secrets at deploy time (not stored in repo)
-    # For sensitive keys prefer to consume secrets (example below)
-    secrets:
-      - openrouter_api_key
-      - opencode_env
     volumes:
-      # Avoid mounting /var/run/docker.sock
-      # If Docker control is required, use a scoped API proxy or a dedicated sidecar with limited API surface.
-      - darkmoon_settings:/root/.config/opencode/:rw
-      - darkmoon_settings:/root/.local/share/opencode/:rw
-      - darkmoon_settings/agents:/root/.opencode/agents/:rw
-      - darkmoon_reports:/root/.local/share/opencode/reports/:rw
-      - darkmoon_sessions:/root/.local/share/opencode/sessions/:rw
+      # No direct /var/run/docker.sock mount here; MCP uses DOCKER_HOST below.
+      - opencode_home:/home/darkmoon:rw
+      - opencode_config:/home/darkmoon/.config/opencode:rw
+      - opencode_data:/home/darkmoon/.local/share/opencode:rw
+      - opencode_agents:/home/darkmoon/.opencode/agents:rw
+      - darkmoon_reports:/home/darkmoon/.local/share/opencode/reports:rw
+      - darkmoon_sessions:/home/darkmoon/.local/share/opencode/sessions:rw
       - darkmoon_workflows:/opt/darkmoon/mcp/server/src/tools/workflows/:rw
     environment:
+      - HOME=/home/darkmoon
+      - OPENCODE_HOME=/home/darkmoon
+      - XDG_CACHE_HOME=/home/darkmoon/.cache
+      - XDG_CONFIG_HOME=/home/darkmoon/.config
+      - XDG_DATA_HOME=/home/darkmoon/.local/share
+      - OPENCODE_AGENTS_DIR=/home/darkmoon/.opencode/agents
+      - OPENCODE_SESSIONS_DIR=/home/darkmoon/.local/share/opencode/sessions
+      - DOCKER_HOST=tcp://docker-proxy:2375
+      - DOCKER_CONTAINER_NAME=darkmoon
       - TERM=xterm-256color
       - LANG=C.UTF-8
     # If outbound traffic to LLM provider must go through a proxy, set HTTP(S)_PROXY env vars here:

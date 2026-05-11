@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OPENCODE_CONFIG_DIR="/root/.config/opencode"
+OPENCODE_HOME="${OPENCODE_HOME:-${HOME:-/root}}"
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$OPENCODE_HOME/.config}"
+XDG_DATA_HOME="${XDG_DATA_HOME:-$OPENCODE_HOME/.local/share}"
+AGENTS_DIR="${OPENCODE_AGENTS_DIR:-$OPENCODE_HOME/.opencode/agents}"
+
+OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-$XDG_CONFIG_HOME/opencode}"
 OPENCODE_CONFIG_FILE="$OPENCODE_CONFIG_DIR/opencode.json"
 
-OPENCODE_AUTH_DIR="/root/.local/share/opencode"
+OPENCODE_AUTH_DIR="${OPENCODE_AUTH_DIR:-$XDG_DATA_HOME/opencode}"
 OPENCODE_AUTH_FILE="$OPENCODE_AUTH_DIR/auth.json"
 
 fail() { echo "❌ $*" >&2; exit 1; }
@@ -18,6 +23,10 @@ log()  { echo "[INIT] $*" >&2; }
 OPENROUTER_PROVIDER="${OPENROUTER_PROVIDER:-}"
 OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
 OPENCODE_MODEL="${OPENCODE_MODEL:-}"
+
+if [ -z "$OPENROUTER_API_KEY" ] && [ -r /run/secrets/openrouter_api_key ]; then
+  OPENROUTER_API_KEY="$(tr -d '\r\n' < /run/secrets/openrouter_api_key)"
+fi
 
 # Local provider vars
 OPENCODE_LOCAL_MODE="${OPENCODE_LOCAL_MODE:-false}"
@@ -110,126 +119,126 @@ cat > "$OPENCODE_CONFIG_FILE" <<EOF
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "primary": true,
-      "prompt_file": "/root/.opencode/agents/pentest.md"
+      "prompt_file": "$AGENTS_DIR/pentest.md"
     },
 
     "active-directory": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/ad.md"
+      "prompt_file": "$AGENTS_DIR/ad.md"
     },
 
     "aspnet": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/aspnet.md"
+      "prompt_file": "$AGENTS_DIR/aspnet.md"
     },
 
     "python-flask": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/flask.md"
+      "prompt_file": "$AGENTS_DIR/flask.md"
     },
 
     "graphql": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/graphql.md"
+      "prompt_file": "$AGENTS_DIR/graphql.md"
     },
 
     "headless-browser": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/headless-browser.md"
+      "prompt_file": "$AGENTS_DIR/headless-browser.md"
     },
 
     "kubernetes": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/kubernetes.md"
+      "prompt_file": "$AGENTS_DIR/kubernetes.md"
     },
 
     "nest": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/nest.md"
+      "prompt_file": "$AGENTS_DIR/nest.md"
     },
 
     "php": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/php.md"
+      "prompt_file": "$AGENTS_DIR/php.md"
     },
 
     "ruby-on-rails": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/ruby.md"
+      "prompt_file": "$AGENTS_DIR/ruby.md"
     },
 
     "springboot": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/springboot.md"
+      "prompt_file": "$AGENTS_DIR/springboot.md"
     },
 
     "nodejs": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/nodejs-express-angular.md"
+      "prompt_file": "$AGENTS_DIR/nodejs-express-angular.md"
     },
 
     "wordpress": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/wordpress.md"
+      "prompt_file": "$AGENTS_DIR/wordpress.md"
     },
 
     "prestashop": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/prestashop.md"
+      "prompt_file": "$AGENTS_DIR/prestashop.md"
     },
 
     "moodle": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/moodle.md"
+      "prompt_file": "$AGENTS_DIR/moodle.md"
     },
 
     "magento": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/magento.md"
+      "prompt_file": "$AGENTS_DIR/magento.md"
     },
 
     "joomla": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/joomla.md"
+      "prompt_file": "$AGENTS_DIR/joomla.md"
     },
 
     "drupal": {
       "model": "$FINAL_MODEL",
       "mcp": ["darkmoon"],
       "secondary": true,
-      "prompt_file": "/root/.opencode/agents/drupal.md"
+      "prompt_file": "$AGENTS_DIR/drupal.md"
     }
   }
 }
